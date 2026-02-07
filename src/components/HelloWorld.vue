@@ -1,8 +1,4 @@
 <template>
-  <!-- <div id="mainWindow" class="main-window">
-
-  </div> -->
-
   <pre class="output">
   {{ outputText }}
   </pre>
