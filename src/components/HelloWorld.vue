@@ -6,55 +6,41 @@
     {{ !isButtonDisabled ? "Start" : "End" }} (Will
     {{ isButtonDisabled ? "enable" : "disable" }} buttons)
   </button>
-  <div class="btn-container">
-    <button
-      class="btn-movement"
-      :class="[isButtonDisabled && 'disabled']"
-      :disabled="isButtonDisabled"
-      @click="moveCircle('x', '-')"
+
+  <div class="viewport">
+    <div
+      class="world"
+      :style="{
+        transform: `translate(${-camera.x}px, ${-camera.y}px)`
+      }"
     >
-      Move left
-    </button>
-    <button
-      class="btn-movement"
-      :class="[isButtonDisabled && 'disabled']"
-      @click="moveCircle('x', '+')"
-    >
-      Move right
-    </button>
-    <button
-      class="btn-movement"
-      :class="[isButtonDisabled && 'disabled']"
-      @click="moveCircle('y', '+')"
-    >
-      Move up
-    </button>
-    <button
-      class="btn-movement"
-      :class="[isButtonDisabled && 'disabled']"
-      @click="moveCircle('y', '-')"
-    >
-      Move down
-    </button>
-  </div>
-  <h3>X position: {{ circleXPosition }}</h3>
-  <h3>Y position: {{ circleYPosition }}</h3>
-  <div class="screen" ref="screenRef">
-    <div class="background1" ref="backgroundLevel1">
-      <div class="straight-road"></div>
+      <div
+        v-for="dot in dots"
+        :key="dot.id"
+        class="dot"
+        :style="{
+          left: dot.x + 'px',
+          top: dot.y + 'px',
+          backgroundColor: dot.color
+        }"
+      />
+
+        <div class="circle" ref="circleRef"></div>
+      <!-- <div
+        class="circle"
+        :style="{
+          left: circle.x + 'px',
+          top: circle.y + 'px'
+        }"
+      /> -->
     </div>
-    <div class="circle" ref="circleRef"></div>
   </div>
 
-  <div class="btn-container">
-    <button class="btn-movement" @click="setSensitivity">
-      Sensitivity: {{ sensitivity }}
-    </button>
-  </div>
+  <button @click="start">Start</button>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch } from "vue";
+import { ref, onMounted, onBeforeUnmount, watch, reactive } from "vue";
 import { SENSITIVITY, LEVEL, POSITION } from "../lib/constants";
 
 /* props (optional, unchanged) */
@@ -77,6 +63,71 @@ const level = ref<number>(LEVEL.LEVEL1); // game level, can increase over time t
 
 const circleXPosition = ref<number>(0);
 const circleYPosition = ref<number>(0);
+
+
+
+
+/* Constants */
+const WORLD_SIZE = 1500
+const VIEWPORT_SIZE = 400
+const CIRCLE_SIZE = 50
+const RADIUS = CIRCLE_SIZE / 2
+
+/* State */
+const circle = reactive({ x: 0, y: 0 })
+const camera = reactive({ x: 0, y: 0 })
+const isAnimating = ref(false)
+
+/* Decorations */
+const dots = ref(
+  Array.from({ length: 250 }, (_, i) => ({
+    id: i,
+    x: Math.random() * (WORLD_SIZE - 20),
+    y: Math.random() * (WORLD_SIZE - 20),
+    color: `hsl(${Math.random() * 360}, 70%, 50%)`
+  }))
+)
+
+/* 🚨 WATCH: camera follows circle */
+watch(
+  () => ({ x: circle.x, y: circle.y }),
+  ({ x, y }) => {
+    let camX = x - VIEWPORT_SIZE / 2 + RADIUS
+    let camY = y - VIEWPORT_SIZE / 2 + RADIUS
+
+    camera.x = Math.max(0, Math.min(camX, WORLD_SIZE - VIEWPORT_SIZE))
+    camera.y = Math.max(0, Math.min(camY, WORLD_SIZE - VIEWPORT_SIZE))
+  }
+)
+
+/* Animation loop (time driver) */
+function start() {
+  if (isAnimating.value) return
+  isAnimating.value = true
+
+  circle.x = 0
+  circle.y = 0
+
+  const speedX = 2
+  const speedY = 1.5
+  const targetX = 900
+  const targetY = 900
+
+  function animate() {
+    if (!isAnimating.value) return
+
+    if (circle.x < targetX) circle.x += speedX
+    if (circle.y < targetY) circle.y += speedY
+
+    if (circle.x < targetX || circle.y < targetY) {
+      requestAnimationFrame(animate)
+    } else {
+      isAnimating.value = false
+    }
+  }
+
+  requestAnimationFrame(animate)
+}
 
 // =========================
 // SCREEN ORIENTATION
@@ -234,46 +285,10 @@ watch([tiltX, tiltY], ([newTiltX, newTiltY]) => {
   const initialTiltX = 0;
   const initialTiltY = 0;
 
-  const tolerateX = Math.abs(newTiltX - initialTiltX) <= tolerance;
-  const tolerateY = Math.abs(newTiltY - initialTiltY) <= tolerance;
-
-  if (tolerateX && tolerateY) {
-    // within tolerance, do not move
-    if (circleRef.value) circleRef.value.style.backgroundColor = "yellow";
-    return;
-  }
-
-  // ===============================
-  // DETECT BEYOND SCREEN MOVEMENT
-  // ===============================
-
-  if (!screenRef.value || !circleRef.value) return;
-
-  const screenRect = screenRef.value.getBoundingClientRect();
-  const circleRect = circleRef.value.getBoundingClientRect();
-
-  // Check if circle is outside the container
-  const isOutside =
-    circleRect.left + 5 < screenRect.left ||
-    circleRect.right + 5 > screenRect.right ||
-    circleRect.top < screenRect.top ||
-    circleRect.bottom + 5 > screenRect.bottom;
-
-  if (isOutside) {
-    console.warn("Circle is moving beyond the screen boundaries!");
-    circleRef.value.style.backgroundColor = "orange";
-    screenRef.value.style.borderColor = "red";
-    screenRef.value.style.borderWidth = "5px";
-    screenRef.value.style.borderStyle = "solid";
-    return;
-  } else {
-    circleRef.value.style.backgroundColor = "blue"; // or your default
-  }
+  if (!circleRef.value) return;
 
   circleXPosition.value += -newTiltX;
   circleYPosition.value += newTiltY;
-  // circle.style.left = `${ circleXPosition.value * sensitivity.value }px`;
-  // circle.style.top = `${ circleYPosition.value * sensitivity.value }px`;
   const scaledX = circleXPosition.value * sensitivity.value;
   const scaledY = circleYPosition.value * sensitivity.value;
 
@@ -285,22 +300,7 @@ watch([tiltX, tiltY], ([newTiltX, newTiltY]) => {
 // LIFECYCLE
 // =========================
 onMounted(() => {
-  if (!screenRef.value || !circleRef.value) return;
-
-  // const screenWidth = screenRef.value.clientWidth;
-  // const screenHeight = screenRef.value.clientHeight;
-
-  // const circleWidth = circleRef.value.offsetWidth;
-  // const circleHeight = circleRef.value.offsetHeight;
-
   setObjectPositionByLevel();
-
-  // center it
-  // circleXPosition.value = (screenWidth - circleWidth) / 2;
-  // circleYPosition.value = (screenHeight - circleHeight) / 2;
-
-  // circleRef.value.style.left = `${circleXPosition.value}px`;
-  // circleRef.value.style.top = `${circleYPosition.value}px`;
 
   window.addEventListener("orientationchange", onOrientationChange);
 
@@ -323,9 +323,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .screen {
-  /* display: flex; */
-  /* align-items: center;
-  justify-content: center; */
   position: relative;
   width: 100%;
   height: 300px;
@@ -433,5 +430,40 @@ h3 {
     /* height: 100%; */
     background-color: gray;
   }
+}
+
+
+
+.viewport {
+  width: 400px;
+  height: 400px;
+  overflow: hidden;
+  border: 2px solid black;
+  position: relative;
+  background: #e0f7ff;
+}
+
+.world {
+  position: absolute;
+  width: 1500px;
+  height: 1500px;
+  background-color: #ccc;
+}
+
+.circle {
+  width: 50px;
+  height: 50px;
+  background: red;
+  border-radius: 50%;
+  position: absolute;
+  z-index: 10;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  position: absolute;
 }
 </style>
